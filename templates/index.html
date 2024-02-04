@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Editor</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.5/ace.js"
+        integrity="sha512-VSXv1IpWmRvbc/CVHfjLtq2oUgwXiGp4E3rMaUbXjXKizz2tDpH1X8Wr4l5ipPTtotlrSxGrsn+yyWoT2qsYUw=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.3/ext-language_tools.min.js"
+        integrity="sha512-eRWzLr+TZSgJmSqTTyDBtddU86qtv/Bq2+ls4DdZAwok4KK2PAxkF0wXNe5AW4IjGSLtkicF7SPCVqi57emM4g=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <style>
+        #editor {
+            position: absolute;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            left: 0;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="editor"></div>
+</body>
+<script>
+    let currentTime;
+    let runningTimeOut;
+    lineFrequency = 5;
+    let ghostText;
+
+    // func
+
+    const editor = ace.edit("editor", {
+        showPrintMargin: false,
+        enableLiveAutocompletion: true,
+        fontSize: 15,
+    });
+    editor.setTheme("ace/theme/chaos");
+    editor.getSession().setMode("ace/mode/python");
+    editor.setKeyboardHandler("ace/keyboard/vscode");
+    editor.focus();
+
+    editorSession = editor.getSession();
+
+    editor.commands.on('afterExec', () => {
+        shostText = '';
+        editor.removeGhostText();
+        currentTime = Date.now();
+        clearTimeout(runningTimeOut);
+        runningTimeOut = setTimeout(() => {
+            const cursorRow = editor.selection.cursor.row;
+            const cursorCol = editor.selection.cursor.column;
+            const activeLine = editor.getSession().getLine(cursorRow).trim();
+            if (activeLine.length <= cursorCol) {
+                fetch('/completion', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ code: editorSession.getLines(Math.max(0, cursorRow - lineFrequency), cursorRow), time: currentTime }),
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.time == currentTime) {
+                            shostText = data.completion;
+                            editor.setGhostText(data.completion);
+                        }
+                    })
+            }
+        }, 3000);
+
+    });
+
+    editor.commands.addCommand({
+        name: 'insertCompletion',
+        bindKey: { win: 'Ctrl-Right', mac: 'Command-Right' },
+        exec: function (editor) {
+            if (shostText) {
+                editor.insert(shostText);
+                shostText = '';
+                editor.removeGhostText();
+            }
+        },
+    });
+</script>
+
+</html>
